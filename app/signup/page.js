@@ -1,43 +1,51 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { createClient } from "@/libs/supabase/client";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Input } from "@/components/ui/input";
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createBrowserClient } from '@supabase/ssr';
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import Link from 'next/link';
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import FeatureList from '@/components/Featurelist';
 
-// This a login/singup page for Supabase Auth.
-// Successfull login redirects to /api/auth/callback where the Code Exchange is processed (see app/api/auth/callback/route.js).
-export default function SignIn() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState(null);
+export default function SignUp() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  
-  const supabase = createClient();
+  const [error, setError] = useState(null);
+  const router = useRouter();
 
-  const handleSubmit = async (e) => {
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+
+  const handleSignUp = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) throw error;
+
+      // Automatically sign in after signup
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) {
-        throw error;
-      }
+      if (signInError) throw signInError;
 
       router.push('/dashboard');
-      router.refresh();
     } catch (error) {
       setError(error.message);
     } finally {
@@ -48,7 +56,7 @@ export default function SignIn() {
   return (
     <div className="flex min-h-screen items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <form onSubmit={handleSignUp} className="flex flex-col gap-6">
           {/* Logo and Title Section */}
           <div className="flex flex-col items-center gap-4 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white">
@@ -56,9 +64,9 @@ export default function SignIn() {
             </div>
             <span className="text-xl font-bold text-blue-600">Scoorly</span>
             <div>
-              <h1 className="text-2xl font-bold">Login to your account</h1>
+              <h1 className="text-2xl font-bold">Create your account</h1>
               <p className="text-balance text-sm text-muted-foreground">
-                Enter your email below to login to your account
+                Enter your details below to create your account
               </p>
             </div>
           </div>
@@ -83,15 +91,7 @@ export default function SignIn() {
             </div>
 
             <div className="grid gap-2">
-              <div className="flex items-center">
-                <Label htmlFor="password">Password</Label>
-                <Link
-                  href="/forgot-password"
-                  className="ml-auto text-sm underline-offset-4 hover:underline"
-                >
-                  Forgot password?
-                </Link>
-              </div>
+              <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -102,13 +102,13 @@ export default function SignIn() {
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? 'Creating account...' : 'Create account'}
             </Button>
 
             <div className="text-center text-sm">
-              Don't have an account?{" "}
-              <Link href="/signup" className="underline underline-offset-4">
-                Sign up
+              Already have an account?{" "}
+              <Link href="/signin" className="underline underline-offset-4">
+                Sign in
               </Link>
             </div>
           </div>

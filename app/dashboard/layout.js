@@ -1,22 +1,21 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/libs/supabase/server";
-import config from "@/config";
+'use client';
+import Header from "@/components/Header";
+import { useExam } from '@/components/contexts/ExamContext';
 
-// This is a server-side component to ensure the user is logged in.
-// If not, it will redirect to the login page.
-// It's applied to all subpages of /dashboard in /app/dashboard/*** pages
-// You can also add custom static UI elements like a Navbar, Sidebar, Footer, etc..
-// See https://shipfa.st/docs/tutorials/private-page
-export default async function LayoutPrivate({ children }) {
-  const supabase = createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect(config.auth.loginUrl);
-  }
-
-  return <>{children}</>;
+export default function DashboardLayout({ children }) {
+  const { selectedExam, selectExam } = useExam();
+  
+  return (
+    <div className="flex h-screen flex-col bg-gray-50 w-full overflow-hidden">
+      <Header
+        showAuth={false}
+        onExamChange={(examId, examData) => selectExam(examId, examData)}
+        selectedExam={selectedExam}
+        setActiveTab={children.props?.setActiveTab}
+      />
+      <main className="flex-1 w-full overflow-hidden">
+        {children}
+      </main>
+    </div>
+  );
 }

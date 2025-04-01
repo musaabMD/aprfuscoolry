@@ -1,178 +1,172 @@
-"use client";
+// components/Header.js
+'use client';
 
-import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
-import Link from "next/link";
-import Image from "next/image";
-import ButtonSignin from "./ButtonSignin";
-import logo from "@/app/icon.png";
-import config from "@/config";
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useUser } from '@/components/contexts/UserContext';
+import { useExam } from '@/components/contexts/ExamContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { PlusCircle, X } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetClose
+} from "@/components/ui/sheet";
+import AddExamContent from '@/components/AddExamContent';
+import { toast } from 'react-hot-toast';
 
-const links = [
-  {
-    href: "/#pricing",
-    label: "Pricing",
-  },
-  {
-    href: "/#testimonials",
-    label: "Reviews",
-  },
-  {
-    href: "/#faq",
-    label: "FAQ",
-  },
-];
-
-const cta = <ButtonSignin extraStyle="btn-primary" />;
-
-// A header with a logo on the left, links in the center (like Pricing, etc...), and a CTA (like Get Started or Login) on the right.
-// The header is responsive, and on mobile, the links are hidden behind a burger button.
-const Header = () => {
-  const searchParams = useSearchParams();
-  const [isOpen, setIsOpen] = useState(false);
-
-  // setIsOpen(false) when the route changes (i.e: when the user clicks on a link on mobile)
+const Header = ({ showAuth = true, onExamChange, setActiveTab }) => {
+  const { user } = useUser();
+  const { selectedExam, selectExam, examData } = useExam();
+  const [isAddExamOpen, setIsAddExamOpen] = useState(false);
+  const [exams, setExams] = useState({});
+  
+  // Simulate fetching exams from storage
   useEffect(() => {
-    setIsOpen(false);
-  }, [searchParams]);
+    // This would normally be fetched from Supabase
+    // For now, we'll use localStorage or mock data
+    const storedExamData = typeof window !== 'undefined' ? 
+      localStorage.getItem('examData') : null;
+    
+    if (storedExamData) {
+      try {
+        setExams(JSON.parse(storedExamData));
+      } catch (e) {
+        console.error('Error parsing stored exam data:', e);
+      }
+    } else {
+      // Mock data as fallback
+      setExams({
+        "NREMT": {
+          id: "nremt",
+          description: "National Registry of Emergency Medical Technicians",
+          color: "#3B82F6",
+          questions: 120
+        }
+      });
+    }
+  }, []);
+
+  // Handle exam selection
+  const handleExamChange = (examName) => {
+    if (examName === "add-new") {
+      // Open the Add Exam side sheet
+      setIsAddExamOpen(true);
+      return;
+    }
+    selectExam?.(examName);
+    onExamChange?.(examName, exams[examName]);
+  };
+
+  // Handle adding a new exam
+  const handleAddExam = (newExam) => {
+    // Add the new exam to the list
+    const updatedExams = {
+      ...exams,
+      [newExam.name]: {
+        id: newExam.id || newExam.name.toLowerCase().replace(/\s+/g, '-'),
+        description: newExam.description,
+        color: newExam.color || "#3B82F6",
+        questions: newExam.questions || 0,
+        hyNotes: newExam.hyNotes || 0
+      }
+    };
+    
+    setExams(updatedExams);
+    
+    // Update localStorage for persistence
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('examData', JSON.stringify(updatedExams));
+    }
+    
+    // Select the new exam
+    selectExam?.(newExam.name);
+    onExamChange?.(newExam.name, updatedExams[newExam.name]);
+    
+    // Close the side sheet
+    setIsAddExamOpen(false);
+    
+    // Navigate to home tab
+    setActiveTab?.("home");
+    
+    // Show success toast
+    toast.success(`${newExam.name} has been added!`);
+  };
 
   return (
-    <header className="bg-base-200">
-      <nav
-        className="container flex items-center justify-between px-8 py-4 mx-auto"
-        aria-label="Global"
-      >
-        {/* Your logo/name on large screens */}
-        <div className="flex lg:flex-1">
-          <Link
-            className="flex items-center gap-2 shrink-0 "
-            href="/"
-            title={`${config.appName} hompage`}
-          >
-            <Image
-              src={logo}
-              alt={`${config.appName} logo`}
-              className="w-8"
-              placeholder="blur"
-              priority={true}
-              width={32}
-              height={32}
-            />
-            <span className="font-extrabold text-lg">{config.appName}</span>
-          </Link>
-        </div>
-        {/* Burger button to open menu on mobile */}
-        <div className="flex lg:hidden">
-          <button
-            type="button"
-            className="-m-2.5 inline-flex items-center justify-center rounded-md p-2.5"
-            onClick={() => setIsOpen(true)}
-          >
-            <span className="sr-only">Open main menu</span>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="w-6 h-6 text-base-content"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-              />
-            </svg>
-          </button>
-        </div>
-
-        {/* Your links on large screens */}
-        <div className="hidden lg:flex lg:justify-center lg:gap-12 lg:items-center">
-          {links.map((link) => (
-            <Link
-              href={link.href}
-              key={link.href}
-              className="link link-hover"
-              title={link.label}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
-
-        {/* CTA on large screens */}
-        <div className="hidden lg:flex lg:justify-end lg:flex-1">{cta}</div>
-      </nav>
-
-      {/* Mobile menu, show/hide based on menu state. */}
-      <div className={`relative z-50 ${isOpen ? "" : "hidden"}`}>
-        <div
-          className={`fixed inset-y-0 right-0 z-10 w-full px-8 py-4 overflow-y-auto bg-base-200 sm:max-w-sm sm:ring-1 sm:ring-neutral/10 transform origin-right transition ease-in-out duration-300`}
-        >
-          {/* Your logo/name on small screens */}
-          <div className="flex items-center justify-between">
-            <Link
-              className="flex items-center gap-2 shrink-0 "
-              title={`${config.appName} hompage`}
-              href="/"
-            >
-              <Image
-                src={logo}
-                alt={`${config.appName} logo`}
-                className="w-8"
-                placeholder="blur"
-                priority={true}
-                width={32}
-                height={32}
-              />
-              <span className="font-extrabold text-lg">{config.appName}</span>
-            </Link>
-            <button
-              type="button"
-              className="-m-2.5 rounded-md p-2.5"
-              onClick={() => setIsOpen(false)}
-            >
-              <span className="sr-only">Close menu</span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
-                className="w-6 h-6"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          </div>
-
-          {/* Your links on small screens */}
-          <div className="flow-root mt-6">
-            <div className="py-4">
-              <div className="flex flex-col gap-y-4 items-start">
-                {links.map((link) => (
-                  <Link
-                    href={link.href}
-                    key={link.href}
-                    className="link link-hover"
-                    title={link.label}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
+    <>
+      <header className="fixed top-0 left-0 w-full bg-white border-b border-gray-200 z-50">
+        <div className="flex items-center justify-between px-4 py-3">
+          {/* Logo and App Name */}
+          <div className="flex items-center">
+            <Link href="/dashboard" className="flex items-center space-x-2" onClick={() => setActiveTab?.("home")}>
+              <div className="bg-blue-600 h-8 w-8 rounded-lg flex items-center justify-center">
+                <span className="text-lg font-bold text-white">S</span>
               </div>
+              <span className="text-lg font-bold">Scoorly</span>
+            </Link>
+          </div>
+          
+          {/* Exam Selector in Header */}
+          {user && Object.keys(exams).length > 0 && (
+            <div className="flex-1 max-w-[180px] mx-4">
+              <Select 
+                value={selectedExam || Object.keys(exams)[0]} 
+                onValueChange={handleExamChange}
+              >
+                <SelectTrigger className="w-full bg-white border-gray-200 h-9">
+                  <SelectValue placeholder="Select Exam" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.keys(exams).map((examName) => (
+                    <SelectItem key={examName} value={examName}>{examName}</SelectItem>
+                  ))}
+                  <SelectItem value="add-new" className="text-blue-600">
+                    <div className="flex items-center">
+                      <PlusCircle className="h-4 w-4 mr-1" />
+                      Add New Exam
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="divider"></div>
-            {/* Your CTA on small screens */}
-            <div className="flex flex-col">{cta}</div>
+          )}
+          
+          {/* User Information */}
+          <div className="flex items-center">
+            {user ? (
+              <span className="text-sm font-medium">
+                {user.email?.split('@')[0] || 'mousab.r'}
+              </span>
+            ) : showAuth ? (
+              <Link href="/signin">
+                <Button variant="outline" size="sm">Sign In</Button>
+              </Link>
+            ) : null}
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* Add Exam Side Sheet */}
+      <Sheet open={isAddExamOpen} onOpenChange={setIsAddExamOpen}>
+        <SheetContent className="sm:max-w-md p-0 overflow-auto">
+          <SheetHeader className="px-6 py-4 border-b sticky top-0 bg-white z-10">
+            <div className="flex items-center justify-between">
+              <SheetTitle>Add New Exam</SheetTitle>
+              <SheetClose className="rounded-full opacity-70 hover:opacity-100 transition">
+                <X className="h-4 w-4" />
+              </SheetClose>
+            </div>
+          </SheetHeader>
+          <div className="px-6 py-6">
+            <AddExamContent onAddExam={handleAddExam} onCancel={() => setIsAddExamOpen(false)} />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 };
 
