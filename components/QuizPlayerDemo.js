@@ -498,42 +498,36 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Fixed header - Full width with user info */}
+      {/* Fixed header - More minimal for mobile */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-blue-600 text-white shadow-lg">
-        <div className="h-16 flex items-center justify-between px-6">
-          <div className="flex items-center space-x-4">
+        <div className="h-12 flex items-center justify-between px-4">
+          <div className="flex items-center space-x-2">
             <button 
               onClick={() => setSidebarOpen(true)}
-              className="hover:bg-blue-700 p-2 rounded-md"
+              className="p-1.5 hover:bg-blue-700 rounded-md"
             >
-              <Menu size={20} />
+              <Menu size={18} />
             </button>
-            <span className="font-semibold text-lg">Scoorly</span>
+            <span className="text-sm font-medium">Scoorly</span>
           </div>
 
-          <div className="flex items-center space-x-8">
-            <span className="text-sm bg-blue-700 px-3 py-1.5 rounded-full">
-              Question {currentIndex + 1} of {questions.length}
+          <div className="flex items-center space-x-3">
+            <span className="text-xs bg-blue-700 px-2 py-1 rounded-full">
+              {currentIndex + 1}/{questions.length}
             </span>
             
             {showTimer && (
-              <div className="flex items-center space-x-2 bg-blue-700 px-3 py-1.5 rounded-full">
-                <Clock size={16} />
-                <span className="font-mono">{formatTime(seconds)}</span>
+              <div className="flex items-center space-x-1 bg-blue-700 px-2 py-1 rounded-full">
+                <Clock size={14} />
+                <span className="font-mono text-xs">{formatTime(seconds)}</span>
               </div>
             )}
-            
-            {/* Updated user info display */}
-            <div className="flex flex-col items-end">
-              <span className="font-medium text-sm">{user.name || user.email}</span>
-              <span className="text-blue-200 text-xs">{user.email}</span>
-            </div>
           </div>
         </div>
       </header>
 
-      {/* Add padding to account for fixed header */}
-      <div className="pt-16 flex flex-1">
+      {/* Adjust top padding to match new header height */}
+      <div className="pt-12 flex flex-1">
         {/* Sidebar */}
         {renderSidebar()}
         
@@ -545,29 +539,29 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
           ></div>
         )}
         
-        {/* Main content */}
-        <div className="flex-1 p-6">
+        {/* Main content - Adjust padding for mobile */}
+        <div className="flex-1 p-4">
           <div className="max-w-3xl mx-auto">
-            {/* Question */}
-            <div className="mb-8 p-8 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-md">
-              <p className="text-xl md:text-2xl font-medium text-blue-900">
+            {/* Question - More compact for mobile */}
+            <div className="mb-6 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg shadow-sm">
+              <p className="text-base md:text-lg font-medium text-blue-900">
                 {currentQuestion.question_text}
               </p>
             </div>
 
-            {/* Answer Choices */}
-            <div className="space-y-4 mb-8">
+            {/* Answer Choices - More compact for mobile */}
+            <div className="space-y-3 mb-6">
               {renderChoices()}
             </div>
             
-            {/* Explanation */}
+            {/* Explanation - More compact for mobile */}
             {(!isQuizMode || showExplanation[currentQuestion.id]) && (
-              <div className="mt-8 p-6 rounded-xl bg-gradient-to-br from-amber-50 to-yellow-50">
-                <h3 className="font-medium text-amber-800 mb-3 text-lg flex items-center">
-                  <Lightbulb className="h-5 w-5 mr-2 text-amber-500" />
+              <div className="mt-6 p-4 rounded-lg bg-gradient-to-br from-amber-50 to-yellow-50">
+                <h3 className="font-medium text-amber-800 mb-2 text-sm flex items-center">
+                  <Lightbulb className="h-4 w-4 mr-2 text-amber-500" />
                   Explanation
                 </h3>
-                <p className="text-stone-800 text-lg leading-relaxed">
+                <p className="text-stone-800 text-sm leading-relaxed">
                   {currentQuestion.rationale}
                 </p>
               </div>
@@ -576,68 +570,40 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
         </div>
       </div>
 
-      {/* Fixed footer */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-300 px-4 py-3 shadow-lg">
-        <div className="flex justify-between md:justify-center items-center max-w-3xl mx-auto relative">
-          {/* Left controls */}
-          <div className="flex items-center gap-2 md:absolute md:left-4">
+      {/* Fixed footer - More compact for mobile */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 px-3 py-2 shadow-lg">
+        <div className="flex justify-between items-center max-w-3xl mx-auto">
+          <div className="flex items-center gap-2">
             <button 
               onClick={toggleBookmark} 
-              className="p-2 rounded-full hover:bg-gray-100"
-              aria-label="Bookmark question"
+              className="p-1.5 rounded-full hover:bg-gray-100"
             >
-              <Pin className={`w-5 h-5 ${bookmarks[currentQuestion.id] ? 'text-blue-500 fill-blue-500' : 'text-stone-500'}`} />
-            </button>
-            
-            <button 
-              onClick={() => setShowFeedback(true)}
-              className="p-2 rounded-full hover:bg-gray-100"
-              aria-label="Report issue"
-            >
-              <Flag className="w-5 h-5 text-stone-500" />
+              <Pin className={`w-4 h-4 ${bookmarks[currentQuestion.id] ? 'text-blue-500 fill-blue-500' : 'text-stone-500'}`} />
             </button>
           </div>
           
-          {/* Center navigation */}
-          <div className="flex items-center gap-4 bg-gray-100 p-1 rounded-full">
+          <div className="flex items-center gap-3">
             <button 
               onClick={goToPrevious}
               disabled={currentIndex === 0}
-              className={`p-2 rounded-full ${currentIndex === 0 ? 'text-gray-300' : 'text-blue-600 hover:bg-blue-100'}`}
-              aria-label="Previous question"
+              className={`p-1.5 rounded-full ${currentIndex === 0 ? 'text-gray-300' : 'text-blue-600 hover:bg-blue-100'}`}
             >
-              <ChevronLeft size={24} />
+              <ChevronLeft size={20} />
             </button>
-            
-            <span className="text-sm px-2 py-1 bg-blue-600 text-white rounded-full min-w-10 text-center">
-              {currentIndex + 1}
-            </span>
             
             <button 
               onClick={goToNext}
               disabled={currentIndex === questions.length - 1}
-              className={`p-2 rounded-full ${currentIndex === questions.length - 1 ? 'text-gray-300' : 'text-blue-600 hover:bg-blue-100'}`}
-              aria-label="Next question"
+              className={`p-1.5 rounded-full ${currentIndex === questions.length - 1 ? 'text-gray-300' : 'text-blue-600 hover:bg-blue-100'}`}
             >
-              <ChevronRight size={24} />
+              <ChevronRight size={20} />
             </button>
           </div>
           
-          {/* Right controls */}
-          <div className="flex items-center gap-2 md:absolute md:right-4">
-            <button
-              onClick={() => {
-                toggleQuizMode();
-                setShowModeInfo(true);
-              }}
-              className="flex items-center gap-1 px-3 py-1 rounded-md border border-blue-600 bg-blue-600 text-white hover:bg-blue-700"
-            >
-              {isQuizMode ? 'Study' : 'Quiz'}
-            </button>
-            
+          <div className="flex items-center gap-2">
             <button
               onClick={handleExitResume}
-              className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700"
+              className="px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700"
             >
               Exit
             </button>

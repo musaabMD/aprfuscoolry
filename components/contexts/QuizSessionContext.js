@@ -4,6 +4,7 @@
 
 import { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { createBrowserClient } from '@supabase/ssr';
 
 const QuizSessionContext = createContext();
 
@@ -73,7 +74,41 @@ export function QuizSessionProvider({ children }) {
       totalQuestions
     };
 
-    // Save final results
+    try {
+      // Only sync completed sessions to Supabase
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Save score summary to Supabase
+        await supabase.from('completed_sessions').insert({
+          user_id: user.id,
+          exam_id: currentSession.examId,
+          session_type: currentSession.quizType,
+          score: finalScore,
+          total_questions: totalQuestions,
+          time_spent: timeSpent,
+          completed_at: new Date().toISOString()
+        });
+        
+        // Update user progress stats
+        const correctAnswers = currentSession.answers.filter(a => a.isCorrect).length;
+        await supabase.rpc('update_user_progress', {
+          p_user_id: user.id,
+          p_exam_id: currentSession.examId,
+          p_correct_count: correctAnswers,
+          p_total_questions: totalQuestions
+        });
+      }
+    } catch (error) {
+      console.error('Error saving session to Supabase:', error);
+    }
+
+    // Save final results locally
     setSessionResults(completedSession);
     localStorage.setItem('lastQuizResults', JSON.stringify(completedSession));
     
