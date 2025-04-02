@@ -46,9 +46,22 @@ export async function middleware(request) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
+  // Get the pathname
+  const path = request.nextUrl.pathname;
+
+  // If trying to access score pages directly
+  if (path.startsWith('/score/')) {
+    // Only allow access if there's a sessionId in the URL
+    const sessionId = request.nextUrl.searchParams.get('sessionId');
+    if (!sessionId) {
+      // Redirect to dashboard if no sessionId
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+  }
+
   return response;
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/session/:path*', '/signin', '/signup'],
+  matcher: ['/dashboard/:path*', '/session/:path*', '/signin', '/signup', '/score/:path*'],
 };

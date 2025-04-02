@@ -1,20 +1,32 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import ScorePractice from '@/components/ScorePractice';
+import { useQuizSession } from '@/components/contexts/QuizSessionContext';
 
 export default function PracticeScorePage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const { validateScoreAccess, sessionResults } = useQuizSession();
   
-  const score = parseInt(searchParams.get('score') || '0');
-  const totalQuestions = parseInt(searchParams.get('totalQuestions') || '0');
-  const timeSpent = searchParams.get('timeSpent') || '00:00:00';
+  useEffect(() => {
+    // Verify this is a legitimate score page access
+    const isValid = validateScoreAccess('practice');
+    
+    if (!isValid || !sessionResults) {
+      router.replace('/dashboard');
+      return;
+    }
+  }, [validateScoreAccess, router, sessionResults]);
+
+  if (!sessionResults) return null;
 
   return (
     <ScorePractice 
-      score={score}
-      totalQuestions={totalQuestions}
-      timeSpent={timeSpent}
+      score={sessionResults.finalScore}
+      totalQuestions={sessionResults.totalQuestions}
+      timeSpent={sessionResults.timeSpent}
     />
   );
 } 

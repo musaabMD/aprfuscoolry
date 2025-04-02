@@ -14,13 +14,17 @@ export default function Mock({ mockExamHistory = [] }) {
       toast.error('Please select an exam first');
       return;
     }
-    router.push(`/session?type=mock&exam=${selectedExam}`);
+    router.push(`/mocksession?exam=${selectedExam}`);
   };
   
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-8">
+      <br />
+      <br />
+      <br />
       <div className="space-y-6">
         {/* Blueprint Component */}
+        <h1 className="text-3xl font-bold mb-6 text-slate-800">Mock exam</h1>
         <Blueprint selectedExam={selectedExam} />
         
         {/* Mock Exam History */}

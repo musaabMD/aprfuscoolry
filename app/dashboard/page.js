@@ -145,7 +145,7 @@ export default function DashboardPage() {
       case 'mock':
         return <Mock mockExamHistory={mockExamHistory} onStartMock={() => handleStartQuiz('mock')} />;
       case 'review':
-        return <Review />;
+        return <Review selectedExam={selectedExam} />;
       case 'profile':
         return <Profile user={user} supabase={supabase} router={router} />;
       default:

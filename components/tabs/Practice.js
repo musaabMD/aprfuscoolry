@@ -104,6 +104,9 @@ export default function Practice({ selectedExam, exams, onStartPractice }) {
   
   return (
     <div className="container mx-auto max-w-5xl px-4 py-4">
+      <br />
+      <br />
+      <br />
       <h1 className="text-2xl font-bold mb-4">Practice Session Setup</h1>
       
       <div className="grid md:grid-cols-12 gap-4">

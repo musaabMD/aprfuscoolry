@@ -187,29 +187,16 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
       // Format time spent
       const timeSpent = formatTime(seconds);
       
-      // Navigate to appropriate score page based on quiz type
-      if (quizType === 'mock') {
-        router.push({
-          pathname: '/score/mock',
-          query: {
-            score: correctAnswers,
-            totalQuestions: questions.length,
-            timeSpent: timeSpent
-          }
-        });
-      } else if (quizType === 'practice') {
-        router.push({
-          pathname: '/score/practice',
-          query: {
-            score: correctAnswers,
-            totalQuestions: questions.length,
-            timeSpent: timeSpent
-          }
-        });
-      }
+      // Call onExit with the results
+      onExit({
+        completed: true,
+        score: correctAnswers,
+        timeSpent: timeSpent,
+        totalQuestions: questions.length
+      });
     } else {
-      // If not complete, just go back to dashboard
-      router.push('/dashboard');
+      // If quiz wasn't completed, call onExit with completed: false
+      onExit({ completed: false });
     }
   };
 

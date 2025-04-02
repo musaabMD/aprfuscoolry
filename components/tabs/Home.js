@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { FileText, Award, Book, PlusCircle, ChevronRight, X, Filter, LogOut } from "lucide-react";
+import { createBrowserClient } from '@supabase/ssr';
+import { useRouter } from "next/navigation";
 import {
   Sheet,
   SheetContent,
@@ -31,6 +33,11 @@ import FeatureList from "@/components/Featurelist";
 export default function Home() {
   const { user } = useUser();
   const { selectedExam, selectExam } = useExam();
+  const router = useRouter();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
   const [isAddExamOpen, setIsAddExamOpen] = useState(false);
   const [exams, setExams] = useState({
     "NREMT": {
@@ -49,6 +56,18 @@ export default function Home() {
   
   // Check if user has any exams
   const hasExams = Object.keys(exams).length > 0;
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      router.push('/signin');
+      router.refresh();
+    } catch (error) {
+      console.error('Error signing out:', error.message);
+      toast.error('Error signing out');
+    }
+  };
 
   // Handle adding a new exam
   const handleAddExam = (examData) => {
@@ -110,6 +129,9 @@ export default function Home() {
 
   return (
     <div className="w-full h-full overflow-hidden bg-gray-50">
+      <br />
+      <br />
+      <br />
       <div className="max-w-6xl mx-auto px-4 py-8 h-full flex flex-col">
         {/* Welcome message - Centered */}
         <div className="mb-8 text-center">
@@ -121,7 +143,7 @@ export default function Home() {
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => signOut()}
+                    onClick={handleSignOut}
                     className="flex items-center gap-2 border-gray-300"
                   >
                     <LogOut className="h-4 w-4" />
