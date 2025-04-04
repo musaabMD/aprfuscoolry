@@ -2,11 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 
 export async function middleware(request) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
+  const response = NextResponse.next();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -17,6 +13,11 @@ export async function middleware(request) {
           return request.cookies.get(name)?.value;
         },
         set(name, value, options) {
+          request.cookies.set({
+            name,
+            value,
+            ...options,
+          });
           response.cookies.set({
             name,
             value,
@@ -24,11 +25,8 @@ export async function middleware(request) {
           });
         },
         remove(name, options) {
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          });
+          request.cookies.delete(name);
+          response.cookies.delete(name);
         },
       },
     }

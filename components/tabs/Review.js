@@ -4,73 +4,122 @@ import { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReviewMCQ from '../ReviewMCQ';
 import { CheckCircle, XCircle, Flag, Layout } from 'lucide-react';
+import { useExam } from '@/components/contexts/ExamContext';
+import { createBrowserClient } from '@supabase/ssr';
+import { toast } from 'react-hot-toast';
 
-export default function Review({ selectedExam }) {
-  // Update the dummy questions with more detailed examples
-  const dummyQuestions = {
-    flagged: [
-      {
-        id: 'f1',
-        question: 'What is the capital of France?',
-        options: ['London', 'Paris', 'Berlin', 'Madrid'],
-        correctAnswer: 'Paris',
-        selectedAnswer: 'London',
-        explanation: 'Paris is the capital and largest city of France. It has been the capital since 987 CE.'
-      },
-      {
-        id: 'f2',
-        question: 'Which programming language is known as the "language of the web"?',
-        options: ['Java', 'Python', 'JavaScript', 'C++'],
-        correctAnswer: 'JavaScript',
-        selectedAnswer: 'JavaScript',
-        explanation: 'JavaScript is the primary language used for web development.'
-      }
-    ],
-    incorrect: [
-      {
-        id: 'i1',
-        question: 'Which of these is a JavaScript framework?',
-        options: ['Django', 'React', 'Flask', 'Laravel'],
-        correctAnswer: 'React',
-        selectedAnswer: 'Django',
-        explanation: 'React is a JavaScript framework developed by Facebook. Django is a Python framework.'
-      },
-      {
-        id: 'i2',
-        question: 'What is the largest planet in our solar system?',
-        options: ['Mars', 'Saturn', 'Jupiter', 'Neptune'],
-        correctAnswer: 'Jupiter',
-        selectedAnswer: 'Saturn',
-        explanation: 'Jupiter is the largest planet in our solar system, with a mass more than twice that of Saturn.'
-      }
-    ],
-    correct: [
-      {
-        id: 'c1',
-        question: 'What does HTML stand for?',
-        options: [
-          'Hyper Text Markup Language',
-          'High Tech Modern Language',
-          'Hyper Transfer Markup Language',
-          'Home Tool Markup Language'
-        ],
-        correctAnswer: 'Hyper Text Markup Language',
-        selectedAnswer: 'Hyper Text Markup Language',
-        explanation: 'HTML (Hyper Text Markup Language) is the standard markup language for creating web pages.'
-      },
-      {
-        id: 'c2',
-        question: 'Which year did World War II end?',
-        options: ['1943', '1944', '1945', '1946'],
-        correctAnswer: '1945',
-        selectedAnswer: '1945',
-        explanation: 'World War II ended in 1945 with the surrender of Germany in May and Japan in September.'
-      }
-    ]
-  };
-
-  const [reviewData, setReviewData] = useState(dummyQuestions);
+export default function Review() {
+  const { selectedExam, userExams } = useExam();
+  const [reviewData, setReviewData] = useState({
+    flagged: [],
+    incorrect: [],
+    correct: []
+  });
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!selectedExam || !userExams[selectedExam]) return;
+
+    const fetchReviewData = async () => {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        );
+
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+          toast.error('Please sign in to view your review materials');
+          return;
+        }
+
+        // Get user's answers and bookmarks
+        const [answersResponse, bookmarksResponse] = await Promise.all([
+          supabase
+            .from('user_answers')
+            .select(`
+              question_id,
+              selected_answer,
+              is_correct,
+              questions (
+                id,
+                question_text,
+                correct_answer,
+                explanation,
+                options
+              )
+            `)
+            .eq('user_id', user.id)
+            .eq('exam_id', userExams[selectedExam].id)
+            .limit(100),
+
+          supabase
+            .from('bookmarks')
+            .select(`
+              question_id,
+              questions (
+                id,
+                question_text,
+                correct_answer,
+                explanation,
+                options
+              )
+            `)
+            .eq('user_id', user.id)
+            .eq('exam_id', userExams[selectedExam].id)
+        ]);
+
+        const answers = answersResponse.data || [];
+        const bookmarks = bookmarksResponse.data || [];
+
+        // Process answers into correct and incorrect
+        const correct = [];
+        const incorrect = [];
+        const flagged = bookmarks.map(bookmark => ({
+          id: bookmark.questions.id,
+          question: bookmark.questions.question_text,
+          options: bookmark.questions.options,
+          correctAnswer: bookmark.questions.correct_answer,
+          selectedAnswer: answers.find(a => a.question_id === bookmark.question_id)?.selected_answer,
+          explanation: bookmark.questions.explanation
+        }));
+
+        answers.forEach(answer => {
+          if (!answer.questions) return;
+
+          const questionData = {
+            id: answer.questions.id,
+            question: answer.questions.question_text,
+            options: answer.questions.options,
+            correctAnswer: answer.questions.correct_answer,
+            selectedAnswer: answer.selected_answer,
+            explanation: answer.questions.explanation
+          };
+
+          if (answer.is_correct) {
+            correct.push(questionData);
+          } else {
+            incorrect.push(questionData);
+          }
+        });
+
+        setReviewData({
+          flagged,
+          correct,
+          incorrect
+        });
+      } catch (error) {
+        console.error('Error fetching review data:', error);
+        toast.error('Failed to load review materials');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchReviewData();
+  }, [selectedExam, userExams]);
 
   const getAllQuestions = () => {
     return [
@@ -100,6 +149,35 @@ export default function Review({ selectedExam }) {
       </div>
     );
   };
+
+  if (!selectedExam || !userExams[selectedExam]) {
+    return (
+      <div className="w-full max-w-6xl mx-auto px-4 py-8">
+        <div className="bg-white p-6 rounded-lg shadow text-center">
+          <h2 className="text-xl font-semibold mb-2">No Exam Selected</h2>
+          <p className="text-gray-600">Please select an exam from the dropdown menu above to view review materials.</p>
+          {Object.keys(userExams).length === 0 && (
+            <div className="mt-4">
+              <p className="text-gray-600">You haven't added any exams yet.</p>
+              <p className="text-sm text-gray-500 mt-2">Add an exam to start reviewing!</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="w-full max-w-6xl mx-auto px-4 py-8">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center justify-center min-h-[200px]">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-8">

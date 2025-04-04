@@ -2,66 +2,70 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import QuizPlayerDemo from '@/components/QuizPlayerDemo';
-import MockExamPlayer from '@/components/MockExamPlayer';
 import { useQuizSession } from '@/components/contexts/QuizSessionContext';
+import { toast } from 'react-hot-toast';
 
-export default function SessionPage() {
+export default function PracticeSessionPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { startQuizSession, completeQuizSession, currentSession } = useQuizSession();
+  const [questions, setQuestions] = useState(null);
   
-  // Get quiz type and exam from URL params
-  const quizType = searchParams.get('type'); // 'mock' or 'practice'
   const selectedExam = searchParams.get('exam');
+  const selectedSubjects = searchParams.get('subjects')?.split(',') || [];
+  const questionCount = parseInt(searchParams.get('count') || '0');
 
   useEffect(() => {
-    if (!quizType || !selectedExam) {
+    if (!selectedExam || selectedSubjects.length === 0) {
       router.push('/dashboard');
       return;
     }
-    
-    // Initialize the quiz session
-    const initSession = async () => {
-      try {
-        await startQuizSession(quizType, selectedExam);
-      } catch (error) {
-        console.error('Error starting quiz session:', error);
-        router.push('/dashboard');
-      }
-    };
-    
-    if (!currentSession) {
-      initSession();
+
+    // Get questions from session storage
+    const storedQuestions = sessionStorage.getItem('practiceQuestions');
+    if (!storedQuestions) {
+      toast.error('No questions found');
+      router.push('/dashboard');
+      return;
     }
-  }, [quizType, selectedExam, router, startQuizSession, currentSession]);
+
+    try {
+      const parsedQuestions = JSON.parse(storedQuestions);
+      setQuestions(parsedQuestions);
+
+      // Initialize the quiz session
+      if (!currentSession) {
+        startQuizSession('practice', selectedExam);
+      }
+    } catch (error) {
+      console.error('Error parsing questions:', error);
+      toast.error('Error loading questions');
+      router.push('/dashboard');
+    }
+  }, [selectedExam, selectedSubjects, currentSession, router, startQuizSession]);
 
   const handleQuizExit = async (results) => {
     if (results?.completed) {
       try {
-        // Complete the session in our context
-        await completeQuizSession(
+        const completedSession = await completeQuizSession(
           results.score,
           results.timeSpent,
           results.totalQuestions
         );
         
-        // Navigate to appropriate score page
-        router.push(`/score/${quizType}`);
+        // Navigate to score page with session data
+        router.push(`/score/practice?score=${results.score}&totalQuestions=${results.totalQuestions}&timeSpent=${results.timeSpent}&sessionId=${completedSession.id}`);
       } catch (error) {
-        console.error('Error completing quiz:', error);
+        console.error('Error completing practice session:', error);
         router.push('/dashboard');
       }
     } else {
-      // If quiz wasn't completed, go back to previous page
-      router.back();
+      router.push('/dashboard');
     }
   };
 
-  // Don't render anything if we don't have the required params
-  if (!quizType || !selectedExam) return null;
-
-  // Don't render until we have a session
-  if (!currentSession) {
+  // Show loading state while questions are being loaded
+  if (!questions || !currentSession) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -69,15 +73,13 @@ export default function SessionPage() {
     );
   }
 
-  // Choose which component to render based on quiz type
-  const QuizComponent = quizType === 'mock' ? MockExamPlayer : QuizPlayerDemo;
-
   return (
-    <div className="min-h-screen">
-      <QuizComponent
+    <div className="fixed inset-0 w-full h-full">
+      <QuizPlayerDemo
         onExit={handleQuizExit}
-        quizType={quizType}
+        quizType="practice"
         selectedExam={selectedExam}
+        initialQuestions={questions}
       />
     </div>
   );

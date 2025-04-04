@@ -1,117 +1,172 @@
 // components/AddExamContent.js
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Activity, Award, FileText, Plus } from "lucide-react";
+import { Activity, Award, FileText } from "lucide-react";
 import { toast } from 'react-hot-toast';
 import FeatureList from "@/components/Featurelist";
+import { createBrowserClient } from '@supabase/ssr';
+import { Label } from "@/components/ui/label";
 
-const AddExamContent = ({ onAddExam, onCancel }) => {
+const AddExamContent = ({ onAddExam, onCancel, user }) => {
   const [step, setStep] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
-  
+  const [predefinedExams, setPredefinedExams] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [examData, setExamData] = useState({
-    name: "",
-    description: "",
-    questions: 0,
-    hyNotes: 0,
-    categories: [],
-    color: "#4F46E5", // Default indigo color
     purchaseType: "free"
   });
 
-  const predefinedExams = [
-    { 
-      id: "nremt", 
-      name: "NREMT", 
-      description: "National Registry of Emergency Medical Technicians certification exam",
-      questions: 120,
-      hyNotes: 45,
-      categories: ["Medical", "Trauma", "Airway", "Operations"],
-      color: "#3B82F6", // Blue
-      icon: <Activity className="h-6 w-6 text-white" />
-    },
-    { 
-      id: "abem", 
-      name: "ABEM", 
-      description: "American Board of Emergency Medicine certification",
-      questions: 225,
-      hyNotes: 70,
-      categories: ["Critical Care", "Procedures", "Pediatrics", "Toxicology"],
-      color: "#059669", // Green
-      icon: <Award className="h-6 w-6 text-white" />
-    },
-    { 
-      id: "cpa", 
-      name: "CPA Exam", 
-      description: "Certified Public Accountant examination",
-      questions: 350,
-      hyNotes: 120,
-      categories: ["Auditing", "Financial", "Regulation", "Business"],
-      color: "#9333EA", // Purple
-      icon: <FileText className="h-6 w-6 text-white" />
-    },
-    { 
-      id: "custom", 
-      name: "Custom Exam", 
-      description: "Create your own custom exam",
-      questions: 0,
-      hyNotes: 0,
-      categories: [],
-      color: "#DC2626", // Red
-      icon: <Plus className="h-6 w-6 text-white" />
-    }
-  ];
+  // Fetch predefined exams from Supabase
+  useEffect(() => {
+    const fetchExams = async () => {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        );
 
-  const handleSelectExam = (exam) => {
-    if (exam.id === "custom") {
-      setStep(2);
+        // First get user's existing exam access
+        const { data: userExams, error: userExamsError } = await supabase
+          .from('user_exam_access')
+          .select('exam_id')
+          .eq('user_id', user?.id);
+
+        if (userExamsError) {
+          console.error('Error fetching user exams:', userExamsError);
+          return;
+        }
+
+        const userExamIds = userExams?.map(ue => ue.exam_id) || [];
+
+        // Get all active exams
+        let query = supabase
+          .from('exams')
+          .select(`
+            id,
+            name,
+            description,
+            subjects (
+              id,
+              name
+            )
+          `)
+          .eq('is_active', true);
+
+        // If user has existing exams, exclude them
+        if (userExamIds.length > 0) {
+          query = query.not('id', 'in', `(${userExamIds.join(',')})`);
+        }
+
+        const { data: exams, error } = await query;
+
+        if (error) throw error;
+
+        // Transform the data
+        const formattedExams = exams.map(exam => ({
+          id: exam.id,
+          name: exam.name,
+          description: exam.description || '',
+          categories: exam.subjects?.map(s => s.name) || [],
+          color: getExamColor(exam.name),
+          icon: getExamIcon(exam.name)
+        }));
+
+        setPredefinedExams(formattedExams);
+      } catch (error) {
+        console.error('Error fetching exams:', error);
+        toast.error('Failed to load exam templates');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user?.id) {
+      fetchExams();
     } else {
-      setExamData({
-        id: exam.id,
-        name: exam.name,
-        description: exam.description,
-        questions: exam.questions,
-        hyNotes: exam.hyNotes,
-        categories: exam.categories,
-        color: exam.color,
-        purchaseType: "free"
-      });
-      setStep(3);
+      setLoading(false);
     }
+  }, [user?.id]);
+
+  // Helper function to get a color based on exam name
+  const getExamColor = (examName) => {
+    const colors = {
+      'NREMT': '#3B82F6',
+      'ABEM': '#059669',
+      'CPA': '#9333EA',
+      'default': '#4F46E5'
+    };
+    return colors[examName] || colors.default;
   };
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setExamData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  // Helper function to get an icon based on exam name
+  const getExamIcon = (examName) => {
+    const icons = {
+      'NREMT': <Activity className="h-6 w-6 text-white" />,
+      'ABEM': <Award className="h-6 w-6 text-white" />,
+      'CPA': <FileText className="h-6 w-6 text-white" />,
+      'default': <FileText className="h-6 w-6 text-white" />
+    };
+    return icons[examName] || icons.default;
+  };
+
+  const handleSelectExam = (exam) => {
+    setExamData({
+      id: exam.id,
+      name: exam.name,
+      description: exam.description,
+      categories: exam.categories,
+      purchaseType: "free"
+    });
+    setStep(2);
   };
 
   const handleSubmit = () => {
-    // Validate exam data
-    if (!examData.name) {
-      toast.error("Please enter an exam name");
+    if (!examData.id || !examData.name) {
+      toast.error('Please select an exam first');
       return;
     }
-    
-    // Save the exam
-    onAddExam(examData);
-    toast.success(`${examData.name} has been added!`);
+
+    onAddExam({
+      id: examData.id,
+      name: examData.name,
+      description: examData.description,
+      categories: examData.categories,
+      purchaseType: examData.purchaseType || 'free'
+    });
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (predefinedExams.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-1">No exams available</h3>
+        <p className="text-gray-500">Please check back later for available exams</p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
       {step === 1 && (
         <>
           <h2 className="text-xl font-semibold mb-2">Choose an Exam</h2>
-          <p className="text-gray-600 mb-4">Select from our pre-configured exams or create your own custom exam.</p>
+          <p className="text-gray-600 mb-4">Select from our available exams.</p>
           
           {/* Search Box */}
           <div className="relative mb-6">
@@ -127,16 +182,6 @@ const AddExamContent = ({ onAddExam, onCancel }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
-            {searchQuery && (
-              <button 
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                onClick={() => setSearchQuery("")}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
           </div>
           
           <div className="space-y-3">
@@ -169,107 +214,11 @@ const AddExamContent = ({ onAddExam, onCancel }) => {
                 </div>
               </div>
             ))}
-            
-            {/* No results message */}
-            {predefinedExams.filter(exam => 
-              searchQuery === "" || 
-              exam.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              exam.description.toLowerCase().includes(searchQuery.toLowerCase())
-            ).length === 0 && (
-              <div className="text-center py-8">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-1">No exams found</h3>
-                <p className="text-gray-500">Try a different search term or add a custom exam</p>
-                <Button 
-                  onClick={() => {
-                    setSearchQuery("");
-                    handleSelectExam(predefinedExams[3]); // Select custom exam option
-                  }}
-                  variant="outline"
-                  className="mt-4"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Custom Exam
-                </Button>
-              </div>
-            )}
           </div>
         </>
       )}
 
       {step === 2 && (
-        <>
-          <h2 className="text-xl font-semibold mb-2">Custom Exam Details</h2>
-          <p className="text-gray-600 mb-6">Fill in the details for your custom exam.</p>
-          
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="name">Exam Name</Label>
-              <Input 
-                id="name" 
-                name="name" 
-                value={examData.name} 
-                onChange={handleInputChange} 
-                placeholder="e.g., Medical Board Exam"
-                className="mt-1"
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <Textarea 
-                id="description" 
-                name="description" 
-                value={examData.description} 
-                onChange={handleInputChange} 
-                placeholder="Briefly describe this exam"
-                className="mt-1"
-                rows={3}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="questions">Number of Questions</Label>
-                <Input 
-                  id="questions" 
-                  name="questions" 
-                  type="number" 
-                  value={examData.questions} 
-                  onChange={handleInputChange} 
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label htmlFor="hyNotes">Number of Study Notes</Label>
-                <Input 
-                  id="hyNotes" 
-                  name="hyNotes" 
-                  type="number" 
-                  value={examData.hyNotes} 
-                  onChange={handleInputChange} 
-                  className="mt-1"
-                />
-              </div>
-            </div>
-            
-            <div className="pt-4 flex space-x-3">
-              <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
-                Back
-              </Button>
-              <Button onClick={() => setStep(3)} className="flex-1">
-                Continue
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {step === 3 && (
         <>
           <h2 className="text-xl font-semibold mb-2">Access Options</h2>
           <p className="text-gray-600 mb-6">Choose how you want to access this exam content.</p>
@@ -322,7 +271,7 @@ const AddExamContent = ({ onAddExam, onCancel }) => {
                 <>Add Free Exam</>
               )}
             </Button>
-            <Button variant="outline" onClick={() => setStep(2)} className="w-full">
+            <Button variant="outline" onClick={() => setStep(1)} className="w-full">
               Back
             </Button>
           </div>

@@ -13,7 +13,7 @@ export default function DashboardLayout({ children }) {
         selectedExam={selectedExam}
         setActiveTab={children.props?.setActiveTab}
       />
-      <main className="flex-1 w-full overflow-hidden">
+      <main className="flex-1 w-full overflow-auto pt-[72px]">
         {children}
       </main>
     </div>

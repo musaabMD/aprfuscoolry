@@ -2,47 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Eye, EyeOff, Clock, PauseCircle, PlayCircle, Pin, Lightbulb, Flag, X, Info, Menu, Filter } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/components/contexts/UserContext';
+import { useQuizSession } from '@/components/contexts/QuizSessionContext';
+import { toast } from 'react-hot-toast';
+import { createBrowserClient } from '@supabase/ssr';
 
-// Mock questions data
-const sampleQuestions = [
-  {
-    id: '1',
-    question_text: 'What is the main advantage of React\'s Virtual DOM?',
-    option_a: 'It allows direct manipulation of the browser DOM',
-    option_b: 'It creates a complete copy of the DOM in memory',
-    option_c: 'It minimizes DOM operations by updating only what has changed',
-    option_d: 'It bypasses the DOM completely',
-    correct_choice: 'c',
-    rationale: 'React\'s Virtual DOM improves performance by creating a lightweight copy of the DOM in memory. When state changes, React first updates this Virtual DOM, compares it with the previous version (diffing), and then efficiently updates only the necessary parts of the actual browser DOM. This minimizes expensive DOM operations and improves application performance.'
-  },
-  {
-    id: '2',
-    question_text: 'Which Hook would you use to run side effects in a function component?',
-    option_a: 'useState()',
-    option_b: 'useEffect()',
-    option_c: 'useContext()',
-    option_d: 'useReducer()',
-    correct_choice: 'b',
-    rationale: 'useEffect() is the Hook designed for handling side effects in function components. Side effects include data fetching, subscriptions, manual DOM manipulations, and other operations that need to happen after render. It serves similar purposes to componentDidMount, componentDidUpdate, and componentWillUnmount in class components, but unified into a single API.'
-  },
-  {
-    id: '3',
-    question_text: 'What is the correct way to pass a parameter to an event handler in ReactWhat is the correct way to pass a parameter to an event handler in ReactWhat is the correct way to pass a parameter to an event handler in ReactWhat is the correct way to pass a parameter to an event handler in ReactWhat is the correct way to pass a parameter to an event handler in ReactWhat is the correct way to pass a parameter to an event handler in ReactWhat is the correct way to pass a parameter to an event handler in ReactWhat is the correct way to pass a parameter to an event handler in ReactWhat is the correct way to pass a parameter to an event handler in ReactWhat is the correct way to pass a parameter to an event handler in ReactWhat is the correct way to pass a parameter to an event handler in React?',
-    option_a: '<button onClick={handleClick(param)}>Click</button>',
-    option_b: '<button onClick={param => handleClick(param)}>Click</button>',
-    option_c: '<button onClick={handleClick} param={param}>Click</button>',
-    option_d: '<button onClick={this.handleClick.bind(param)}>Click</button>',
-    correct_choice: 'b',
-    rationale: 'The correct approach is using an arrow function: onClick={param => handleClick(param)}. This creates a new function that calls your event handler with the parameter. The first option would execute handleClick immediately during render and assign its return value to onClick. The third option isn\'t valid JSX. The fourth option incorrectly uses bind() and would not work in a functional component context.'
-  }
-];
-
-const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
+const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam, initialQuestions }) => {
   const router = useRouter();
-  const { user, loading } = useUser();
+  const { user, loading: userLoading } = useUser();
+  const { currentSession, saveAnswer } = useQuizSession();
+  const [supabase, setSupabase] = useState(null);
   
   // Core state
-  const [questions] = useState(sampleQuestions);
+  const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState({});
   const [bookmarks, setBookmarks] = useState({});
@@ -53,11 +24,95 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
   const [showExitInfo, setShowExitInfo] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
+  const [sessionId, setSessionId] = useState(null);
   
   // Timer related state
   const [showTimer, setShowTimer] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  
+  // Initialize Supabase client
+  useEffect(() => {
+    const supabaseClient = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    );
+    setSupabase(supabaseClient);
+    
+    // Generate a unique session ID
+    setSessionId(Date.now().toString());
+  }, []);
+
+  // Load existing bookmarks
+  useEffect(() => {
+    if (!supabase || !user || !questions.length) return;
+
+    const loadBookmarks = async () => {
+      const { data: bookmarksData } = await supabase
+        .from('bookmarks')
+        .select('question_id')
+        .eq('user_id', user.id)
+        .in('question_id', questions.map(q => q.id));
+
+      if (bookmarksData) {
+        const bookmarksMap = {};
+        bookmarksData.forEach(bookmark => {
+          bookmarksMap[bookmark.question_id] = true;
+        });
+        setBookmarks(bookmarksMap);
+      }
+    };
+
+    loadBookmarks();
+  }, [supabase, user, questions]);
+  
+  // Load questions from session storage if not provided as prop
+  useEffect(() => {
+    if (initialQuestions) {
+      const formattedQuestions = initialQuestions.map(q => ({
+        ...q,
+        options: [
+          { id: 'a', text: q.option_a },
+          { id: 'b', text: q.option_b },
+          { id: 'c', text: q.option_c },
+          { id: 'd', text: q.option_d },
+          { id: 'e', text: q.option_e },
+          { id: 'f', text: q.option_f }
+        ].filter(opt => opt.text) // Remove empty options
+      }));
+      setQuestions(formattedQuestions);
+    } else {
+      const storedQuestions = sessionStorage.getItem(
+        quizType === 'mock' ? 'mockQuestions' : 'practiceQuestions'
+      );
+      
+      if (!storedQuestions) {
+        toast.error('No questions found');
+        router.push('/dashboard');
+        return;
+      }
+
+      try {
+        const parsedQuestions = JSON.parse(storedQuestions);
+        const formattedQuestions = parsedQuestions.map(q => ({
+          ...q,
+          options: [
+            { id: 'a', text: q.option_a },
+            { id: 'b', text: q.option_b },
+            { id: 'c', text: q.option_c },
+            { id: 'd', text: q.option_d },
+            { id: 'e', text: q.option_e },
+            { id: 'f', text: q.option_f }
+          ].filter(opt => opt.text)
+        }));
+        setQuestions(formattedQuestions);
+      } catch (error) {
+        console.error('Error parsing questions:', error);
+        toast.error('Error loading questions');
+        router.push('/dashboard');
+      }
+    }
+  }, [initialQuestions, quizType, router]);
   
   const currentQuestion = questions[currentIndex];
   
@@ -101,7 +156,7 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
         setShowExitInfo(false);
       }
     };
-      
+    
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('click', handleClickOutside);
     
@@ -110,18 +165,20 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
       document.removeEventListener('click', handleClickOutside);
     };
   }, [currentIndex, questions.length]);
-
+  
   // Timer effect
   useEffect(() => {
     let interval;
+    
     if (showTimer && !isPaused) {
       interval = setInterval(() => {
         setSeconds(prevSeconds => prevSeconds + 1);
       }, 1000);
     }
+    
     return () => clearInterval(interval);
   }, [showTimer, isPaused]);
-
+  
   // Format timer display
   const formatTime = (totalSeconds) => {
     const hours = Math.floor(totalSeconds / 3600);
@@ -130,41 +187,104 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
     
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
-
+  
   // Navigation handlers
   const goToNext = () => {
     if (currentIndex < questions.length - 1) {
       setCurrentIndex(currentIndex + 1);
     }
   };
-
+  
   const goToPrevious = () => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
     }
   };
-
+  
   // Handle selecting an answer
-  const handleAnswerClick = (choiceId) => {
-    if (isQuizMode && !answers[currentQuestion.id]) {
-      const newAnswers = { ...answers };
-      newAnswers[currentQuestion.id] = choiceId;
-      setAnswers(newAnswers);
-      
-      // Automatically show explanation in quiz mode after answering
-      const newShowExplanation = { ...showExplanation };
-      newShowExplanation[currentQuestion.id] = true;
-      setShowExplanation(newShowExplanation);
+  const handleAnswerClick = async (choiceId) => {
+    if (!isQuizMode || !user || answers[currentQuestion.id]) return;
+
+    const newAnswers = { ...answers };
+    newAnswers[currentQuestion.id] = choiceId;
+    setAnswers(newAnswers);
+
+    const isCorrect = choiceId === currentQuestion.correct_answer;
+
+    // Save answer in context
+    saveAnswer(currentQuestion.id, choiceId, isCorrect, seconds);
+
+    // Store answer in Supabase
+    if (supabase) {
+      try {
+        await supabase.from('user_answers').insert({
+          user_id: user.id,
+          question_id: currentQuestion.id,
+          selected_answer: choiceId,
+          is_correct: isCorrect,
+          session_id: sessionId,
+          exam_id: selectedExam,
+          time_spent: seconds
+        });
+
+        // Update user progress
+        await supabase.from('user_progress').upsert({
+          user_id: user.id,
+          exam_id: selectedExam,
+          subject_id: currentQuestion.subject_id,
+          correct_count: isCorrect ? 1 : 0,
+          total_attempts: 1,
+          last_attempt: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,exam_id,subject_id',
+          count: 'total_attempts',
+          increment: ['correct_count', 'total_attempts']
+        });
+
+      } catch (error) {
+        console.error('Error saving answer:', error);
+        toast.error('Failed to save your answer');
+      }
+    }
+
+    // Show explanation
+    const newShowExplanation = { ...showExplanation };
+    newShowExplanation[currentQuestion.id] = true;
+    setShowExplanation(newShowExplanation);
+  };
+  
+  // Toggle bookmark status
+  const toggleBookmark = async () => {
+    if (!user || !supabase) {
+      toast.error('Please sign in to bookmark questions');
+      return;
+    }
+
+    const newBookmarks = { ...bookmarks };
+    const isBookmarked = !bookmarks[currentQuestion.id];
+    newBookmarks[currentQuestion.id] = isBookmarked;
+    setBookmarks(newBookmarks);
+
+    try {
+      if (isBookmarked) {
+        await supabase.from('bookmarks').insert({
+          user_id: user.id,
+          question_id: currentQuestion.id,
+          exam_id: selectedExam
+        });
+      } else {
+        await supabase.from('bookmarks').delete()
+          .match({ user_id: user.id, question_id: currentQuestion.id });
+      }
+    } catch (error) {
+      console.error('Error updating bookmark:', error);
+      toast.error('Failed to update bookmark');
+      // Revert the bookmark state on error
+      newBookmarks[currentQuestion.id] = !isBookmarked;
+      setBookmarks(newBookmarks);
     }
   };
-
-  // Toggle bookmark status
-  const toggleBookmark = () => {
-    const newBookmarks = { ...bookmarks };
-    newBookmarks[currentQuestion.id] = !bookmarks[currentQuestion.id];
-    setBookmarks(newBookmarks);
-  };
-
+  
   // Toggle quiz mode (hide/show answers)
   const toggleQuizMode = () => {
     setIsQuizMode(!isQuizMode);
@@ -174,38 +294,47 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
   const handleExitResume = () => {
     setShowExitInfo(true);
   };
-
-  const handleExit = () => {
+  
+  const handleExit = async () => {
     const isComplete = Object.keys(answers).length === questions.length;
     
-    if (isComplete) {
+    if (isComplete && user && supabase) {
       // Calculate score
       const correctAnswers = Object.entries(answers).reduce((count, [questionId, answer]) => {
-        return count + (isAnswerCorrect(questionId, answer) ? 1 : 0);
+        return count + (answer === questions.find(q => q.id === questionId)?.correct_answer ? 1 : 0);
       }, 0);
       
-      // Format time spent
-      const timeSpent = formatTime(seconds);
-      
-      // Call onExit with the results
-      onExit({
-        completed: true,
-        score: correctAnswers,
-        timeSpent: timeSpent,
-        totalQuestions: questions.length
-      });
+      try {
+        // Store session results
+        const { data: sessionData } = await supabase.from('practice_sessions').insert({
+          user_id: user.id,
+          exam_id: selectedExam,
+          session_id: sessionId,
+          total_questions: questions.length,
+          correct_answers: correctAnswers,
+          time_spent: seconds,
+          completed: true,
+          session_type: quizType
+        }).select().single();
+
+        // Navigate to appropriate score page
+        const scorePagePath = quizType === 'mock' ? '/score/mock' : '/score/practice';
+        router.push(`${scorePagePath}?score=${correctAnswers}&totalQuestions=${questions.length}&timeSpent=${formatTime(seconds)}&sessionId=${sessionData.id}`);
+      } catch (error) {
+        console.error('Error saving session:', error);
+        toast.error('Failed to save session results');
+      }
     } else {
-      // If quiz wasn't completed, call onExit with completed: false
-      onExit({ completed: false });
+      router.push('/dashboard');
     }
   };
-
+  
   // Navigate directly to a question
   const navigateToQuestion = (index) => {
     setCurrentIndex(index);
     setSidebarOpen(false); // Close sidebar on mobile after selection
   };
-
+  
   // Filter questions based on active filter
   const filteredQuestions = () => {
     if (activeFilter === 'all') return questions;
@@ -220,13 +349,13 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
     
     return questions;
   };
-
+  
   // Determine if answer is correct
   const isAnswerCorrect = (questionId, choiceId) => {
     const question = questions.find(q => q.id === questionId);
     return question && choiceId === question.correct_choice;
   };
-
+  
   // Determine style for answer choices
   const getChoiceStyle = (choiceId) => {
     const baseStyle = 'w-full p-5 text-left border rounded-lg transition-all flex justify-between items-center text-lg';
@@ -252,30 +381,28 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
     
     return `${baseStyle} bg-white border-stone-300 hover:bg-gray-100 hover:border-stone-400`;
   };
-
+  
   // Render answer choices for current question
   const renderChoices = () => {
-    const choices = ['a', 'b', 'c', 'd', 'e', 'f'];
-    return choices.map(choiceId => {
-      const optionKey = `option_${choiceId}`;
-      if (!currentQuestion[optionKey]) return null;
+    if (!currentQuestion?.options) return null;
 
-      return (
-        <button
-          key={choiceId}
-          onClick={() => handleAnswerClick(choiceId)}
-          disabled={isQuizMode && answers[currentQuestion.id]}
-          className={getChoiceStyle(choiceId)}
-        >
-          <div className="flex items-center gap-4">
-            <span className="font-medium text-xl text-stone-800 min-w-6 text-center">{choiceId.toUpperCase()}</span>
-            <span className="text-lg text-stone-800">{currentQuestion[optionKey]}</span>
-          </div>
-        </button>
-      );
-    });
+    return currentQuestion.options.map(option => (
+      <button
+        key={option.id}
+        onClick={() => handleAnswerClick(option.id)}
+        disabled={isQuizMode && answers[currentQuestion.id]}
+        className={getChoiceStyle(option.id)}
+      >
+        <div className="flex items-center gap-4">
+          <span className="font-medium text-xl text-stone-800 min-w-6 text-center">
+            {option.id.toUpperCase()}
+          </span>
+          <span className="text-lg text-stone-800">{option.text}</span>
+        </div>
+      </button>
+    ));
   };
-
+  
   // Render sidebar
   const renderSidebar = () => {
     const filtered = filteredQuestions();
@@ -285,7 +412,7 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
         <div className="p-4 border-b border-gray-200">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-bold text-blue-700">{examName}</h2>
-            <button 
+            <button
               onClick={() => setSidebarOpen(false)}
               className="p-1 rounded hover:bg-gray-100"
             >
@@ -293,19 +420,19 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
             </button>
           </div>
           <div className="mt-4 flex flex-col gap-2">
-            <button 
+            <button
               onClick={() => setActiveFilter('all')}
               className={`text-left px-3 py-2 rounded-md ${activeFilter === 'all' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}
             >
               All Questions ({questions.length})
             </button>
-            <button 
+            <button
               onClick={() => setActiveFilter('bookmarked')}
               className={`text-left px-3 py-2 rounded-md ${activeFilter === 'bookmarked' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}
             >
               Bookmarked ({Object.values(bookmarks).filter(Boolean).length})
             </button>
-            <button 
+            <button
               onClick={() => setActiveFilter('unanswered')}
               className={`text-left px-3 py-2 rounded-md ${activeFilter === 'unanswered' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}`}
             >
@@ -313,7 +440,6 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
             </button>
           </div>
         </div>
-        
         <div className="p-4 overflow-y-auto max-h-[calc(100vh-180px)]">
           <div className="grid grid-cols-5 gap-2">
             {filtered.map((q, idx) => {
@@ -327,7 +453,7 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
               if (isCurrentQuestion) {
                 bgColor = 'bg-blue-500 text-white border border-blue-500';
               } else if (isAnswered) {
-                bgColor = isAnswerCorrect(q.id, answers[q.id]) 
+                bgColor = isAnswerCorrect(q.id, answers[q.id])
                   ? 'bg-green-100 text-green-800 border border-green-300'
                   : 'bg-red-100 text-red-800 border border-red-300';
               }
@@ -352,7 +478,7 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
       </div>
     );
   };
-
+  
   // Render modals
   const renderFeedback = () => {
     if (!showFeedback) return null;
@@ -362,14 +488,13 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
         <div className="bg-white rounded-lg w-full max-w-md p-6 m-4">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-medium">Submit Feedback</h3>
-            <button 
+            <button
               onClick={() => setShowFeedback(false)}
               className="p-1 rounded-full hover:bg-gray-100"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
-          
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
               <input type="checkbox" id="typo" className="h-4 w-4" />
@@ -388,12 +513,10 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
               <label htmlFor="other" className="text-sm">Other issue</label>
             </div>
           </div>
-          
-          <textarea 
+          <textarea
             placeholder="Describe the issue..."
             className="w-full p-2 border rounded-md mt-4 min-h-24"
           />
-          
           <button className="mt-4 w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700">
             Submit Feedback
           </button>
@@ -410,27 +533,24 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
         <div className="bg-white rounded-lg w-full max-w-md p-6 m-4">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-medium">Study Modes</h3>
-            <button 
+            <button
               onClick={() => setShowModeInfo(false)}
               className="p-1 rounded-full hover:bg-gray-100"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
-          
           <div className="space-y-4">
             <div className="p-3 bg-blue-50 rounded-md border border-blue-200">
               <h4 className="font-medium mb-1">Quiz Mode</h4>
               <p className="text-sm">In Quiz Mode, you must select an answer to see if it's correct. Explanations will appear after answering.</p>
             </div>
-            
             <div className="p-3 bg-green-50 rounded-md border border-green-200">
               <h4 className="font-medium mb-1">Study Mode</h4>
               <p className="text-sm">In Study Mode, correct answers and explanations are shown immediately. Use this to review material you've already studied.</p>
             </div>
           </div>
-          
-          <button 
+          <button
             onClick={() => setShowModeInfo(false)}
             className="mt-4 w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700"
           >
@@ -449,29 +569,25 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
         <div className="bg-white rounded-lg w-full max-w-md p-6 m-4">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-medium">Exit & Resume</h3>
-            <button 
+            <button
               onClick={() => setShowExitInfo(false)}
               className="p-1 rounded-full hover:bg-gray-100"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
-          
           <p className="mb-4">You're currently on Question {currentIndex + 1} of {questions.length}.</p>
-          
           <p className="text-sm mb-4">
             If you exit now, your progress will be saved. You can resume this quiz later from this question.
           </p>
-          
           <div className="flex space-x-3">
-            <button 
+            <button
               onClick={() => setShowExitInfo(false)}
               className="flex-1 py-2 border border-gray-300 rounded-md hover:bg-gray-100"
             >
               Cancel
             </button>
-            
-            <button 
+            <button
               onClick={handleExit}
               className="flex-1 bg-red-600 text-white py-2 rounded-md hover:bg-red-700"
             >
@@ -482,27 +598,29 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
       </div>
     );
   };
-
+  
   // If loading, show loading state
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-    </div>;
+  if (userLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
   }
-
+  
   // If no user, redirect to signin (this is a backup to middleware)
   if (!user) {
     router.push('/signin');
     return null;
   }
-
+  
   return (
     <div className="min-h-screen flex flex-col">
       {/* Fixed header - More minimal for mobile */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-blue-600 text-white shadow-lg">
         <div className="h-12 flex items-center justify-between px-4">
           <div className="flex items-center space-x-2">
-            <button 
+            <button
               onClick={() => setSidebarOpen(true)}
               className="p-1.5 hover:bg-blue-700 rounded-md"
             >
@@ -510,12 +628,10 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
             </button>
             <span className="text-sm font-medium">Scoorly</span>
           </div>
-
           <div className="flex items-center space-x-3">
             <span className="text-xs bg-blue-700 px-2 py-1 rounded-full">
               {currentIndex + 1}/{questions.length}
             </span>
-            
             {showTimer && (
               <div className="flex items-center space-x-1 bg-blue-700 px-2 py-1 rounded-full">
                 <Clock size={14} />
@@ -525,7 +641,7 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
           </div>
         </div>
       </header>
-
+      
       {/* Adjust top padding to match new header height */}
       <div className="pt-12 flex flex-1">
         {/* Sidebar */}
@@ -533,7 +649,7 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
         
         {/* Sidebar overlay */}
         {sidebarOpen && (
-          <div 
+          <div
             className="fixed inset-0 bg-black bg-opacity-50 z-30"
             onClick={() => setSidebarOpen(false)}
           ></div>
@@ -548,7 +664,7 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
                 {currentQuestion.question_text}
               </p>
             </div>
-
+            
             {/* Answer Choices - More compact for mobile */}
             <div className="space-y-3 mb-6">
               {renderChoices()}
@@ -569,29 +685,27 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
           </div>
         </div>
       </div>
-
+      
       {/* Fixed footer - More compact for mobile */}
       <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-200 px-3 py-2 shadow-lg">
         <div className="flex justify-between items-center max-w-3xl mx-auto">
           <div className="flex items-center gap-2">
-            <button 
-              onClick={toggleBookmark} 
+            <button
+              onClick={toggleBookmark}
               className="p-1.5 rounded-full hover:bg-gray-100"
             >
               <Pin className={`w-4 h-4 ${bookmarks[currentQuestion.id] ? 'text-blue-500 fill-blue-500' : 'text-stone-500'}`} />
             </button>
           </div>
-          
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={goToPrevious}
               disabled={currentIndex === 0}
               className={`p-1.5 rounded-full ${currentIndex === 0 ? 'text-gray-300' : 'text-blue-600 hover:bg-blue-100'}`}
             >
               <ChevronLeft size={20} />
             </button>
-            
-            <button 
+            <button
               onClick={goToNext}
               disabled={currentIndex === questions.length - 1}
               className={`p-1.5 rounded-full ${currentIndex === questions.length - 1 ? 'text-gray-300' : 'text-blue-600 hover:bg-blue-100'}`}
@@ -599,7 +713,6 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
               <ChevronRight size={20} />
             </button>
           </div>
-          
           <div className="flex items-center gap-2">
             <button
               onClick={handleExitResume}
@@ -610,7 +723,7 @@ const QuizPlayerDemo = ({ onExit, onComplete, quizType, selectedExam }) => {
           </div>
         </div>
       </div>
-
+      
       {/* Modals */}
       {renderFeedback()}
       {renderModeInfo()}

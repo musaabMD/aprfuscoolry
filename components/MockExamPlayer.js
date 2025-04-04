@@ -3,58 +3,15 @@ import { useRouter } from 'next/navigation';
 import { List, CheckCircle2, Circle, Flag, X, ChevronLeft, ChevronRight, Clock, MessageCircle } from 'lucide-react';
 import { useUser } from '@/components/contexts/UserContext';
 import { useExam } from '@/components/contexts/ExamContext';
+import { toast } from 'react-hot-toast';
 
 const ImprovedExamApp = ({ onExit }) => {
   const router = useRouter();
   const { user } = useUser();
   const { selectedExam, examData } = useExam();
-  // Sample question data
-  const questions = [
-    {
-      id: "e10",
-      number: 1,
-      text: "A 13-year-old girl is brought to the clinic by her mother for a yearly physical examination. The patient feels well but is worried that she has not yet started puberty. Temperature is 36.7 C (98 F), blood pressure is 152/91 mm Hg, pulse is 75/min, and respirations are 18/min. Physical examination is significant for a lack of secondary sexual characteristics; a blind vagina is noted on pelvic examination. Laboratory studies reveal hypokalemia and low testosterone and estradiol levels. Cytogenetic analysis shows a 46,XY karyotype. This patient most likely has deficiency of which of the following enzymes?",
-      options: [
-        { id: "A", text: "5 alpha-reductase" },
-        { id: "B", text: "11 beta-hydroxylase" },
-        { id: "C", text: "17 alpha-hydroxylase" },
-        { id: "D", text: "20,22-desmolase" },
-        { id: "E", text: "21-hydroxylase" }
-      ]
-    },
-    {
-      id: "e11",
-      number: 2,
-      text: "A 45-year-old patient presents with unexplained weight loss, increased thirst, and frequent urination. Lab tests show elevated blood glucose levels. Which of the following is the most likely diagnosis?",
-      options: [
-        { id: "A", text: "Type 1 Diabetes" },
-        { id: "B", text: "Type 2 Diabetes" },
-        { id: "C", text: "Hypothyroidism" },
-        { id: "D", text: "Addison's Disease" },
-        { id: "E", text: "Cushing's Syndrome" }
-      ]
-    },
-    {
-      id: "e12",
-      number: 3,
-      text: "A 60-year-old male presents with chest pain, shortness of breath, and elevated troponin levels. What is the most appropriate immediate treatment?",
-      options: [
-        { id: "A", text: "Aspirin" },
-        { id: "B", text: "Beta-blockers" },
-        { id: "C", text: "Thrombolytics" },
-        { id: "D", text: "Nitroglycerin" },
-        { id: "E", text: "All of the above" }
-      ]
-    }
-  ];
-
-  // User info
-  const userInfo = {
-    name: "John Smith",
-    email: "john.smith@example.com"
-  };
-
+  
   // State
+  const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [markedQuestions, setMarkedQuestions] = useState({});
@@ -65,6 +22,26 @@ const ImprovedExamApp = ({ onExit }) => {
   const [feedback, setFeedback] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
   const sidebarRef = useRef();
+
+  // Load questions from session storage
+  useEffect(() => {
+    const storedQuestions = sessionStorage.getItem('mockQuestions');
+    
+    if (!storedQuestions) {
+      toast.error('No questions found');
+      router.push('/dashboard');
+      return;
+    }
+
+    try {
+      const parsedQuestions = JSON.parse(storedQuestions);
+      setQuestions(parsedQuestions);
+    } catch (error) {
+      console.error('Error parsing questions:', error);
+      toast.error('Error loading questions');
+      router.push('/dashboard');
+    }
+  }, [router]);
 
   const currentQuestion = questions[currentQuestionIndex];
 

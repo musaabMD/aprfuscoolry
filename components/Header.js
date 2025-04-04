@@ -1,7 +1,7 @@
 // components/Header.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useUser } from '@/components/contexts/UserContext';
 import { useExam } from '@/components/contexts/ExamContext';
@@ -20,80 +20,30 @@ import { toast } from 'react-hot-toast';
 
 const Header = ({ showAuth = true, onExamChange, setActiveTab }) => {
   const { user } = useUser();
-  const { selectedExam, selectExam, examData } = useExam();
+  const { selectedExam, selectExam, userExams, loading, addExam } = useExam();
   const [isAddExamOpen, setIsAddExamOpen] = useState(false);
-  const [exams, setExams] = useState({});
-  
-  // Simulate fetching exams from storage
-  useEffect(() => {
-    // This would normally be fetched from Supabase
-    // For now, we'll use localStorage or mock data
-    const storedExamData = typeof window !== 'undefined' ? 
-      localStorage.getItem('examData') : null;
-    
-    if (storedExamData) {
-      try {
-        setExams(JSON.parse(storedExamData));
-      } catch (e) {
-        console.error('Error parsing stored exam data:', e);
-      }
-    } else {
-      // Mock data as fallback
-      setExams({
-        "NREMT": {
-          id: "nremt",
-          description: "National Registry of Emergency Medical Technicians",
-          color: "#3B82F6",
-          questions: 120
-        }
-      });
-    }
-  }, []);
 
   // Handle exam selection
   const handleExamChange = (examName) => {
     if (examName === "add-new") {
-      // Open the Add Exam side sheet
       setIsAddExamOpen(true);
       return;
     }
-    selectExam?.(examName);
-    onExamChange?.(examName, exams[examName]);
+    selectExam(examName);
+    onExamChange?.(examName);
   };
 
   // Handle adding a new exam
-  const handleAddExam = (newExam) => {
-    // Add the new exam to the list
-    const updatedExams = {
-      ...exams,
-      [newExam.name]: {
-        id: newExam.id || newExam.name.toLowerCase().replace(/\s+/g, '-'),
-        description: newExam.description,
-        color: newExam.color || "#3B82F6",
-        questions: newExam.questions || 0,
-        hyNotes: newExam.hyNotes || 0
-      }
-    };
-    
-    setExams(updatedExams);
-    
-    // Update localStorage for persistence
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('examData', JSON.stringify(updatedExams));
+  const handleAddExam = async (newExam) => {
+    try {
+      await addExam(newExam);
+      setIsAddExamOpen(false);
+      setActiveTab?.("home");
+      toast.success(`${newExam.name} has been added!`);
+    } catch (error) {
+      console.error('Error adding exam:', error);
+      toast.error('Failed to add exam. Please try again.');
     }
-    
-    // Select the new exam
-    selectExam?.(newExam.name);
-    onExamChange?.(newExam.name, updatedExams[newExam.name]);
-    
-    // Close the side sheet
-    setIsAddExamOpen(false);
-    
-    // Navigate to home tab
-    setActiveTab?.("home");
-    
-    // Show success toast
-    toast.success(`${newExam.name} has been added!`);
   };
 
   return (
@@ -111,25 +61,44 @@ const Header = ({ showAuth = true, onExamChange, setActiveTab }) => {
           </div>
           
           {/* Exam Selector in Header */}
-          {user && Object.keys(exams).length > 0 && (
+          {user && (
             <div className="flex-1 max-w-[180px] mx-4">
               <Select 
-                value={selectedExam || Object.keys(exams)[0]} 
+                value={selectedExam || "no-selection"} 
                 onValueChange={handleExamChange}
               >
                 <SelectTrigger className="w-full bg-white border-gray-200 h-9">
                   <SelectValue placeholder="Select Exam" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.keys(exams).map((examName) => (
-                    <SelectItem key={examName} value={examName}>{examName}</SelectItem>
-                  ))}
-                  <SelectItem value="add-new" className="text-blue-600">
-                    <div className="flex items-center">
-                      <PlusCircle className="h-4 w-4 mr-1" />
-                      Add New Exam
-                    </div>
-                  </SelectItem>
+                  {!loading && Object.keys(userExams).length > 0 ? (
+                    <>
+                      {Object.keys(userExams).map((examName) => (
+                        <SelectItem key={examName} value={examName}>
+                          {examName}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="add-new">
+                        <div className="flex items-center text-blue-600">
+                          <PlusCircle className="h-4 w-4 mr-1" />
+                          Add New Exam
+                        </div>
+                      </SelectItem>
+                    </>
+                  ) : loading ? (
+                    <SelectItem value="loading">
+                      <div className="flex items-center justify-center py-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                      </div>
+                    </SelectItem>
+                  ) : (
+                    <SelectItem value="add-new">
+                      <div className="flex items-center text-blue-600">
+                        <PlusCircle className="h-4 w-4 mr-1" />
+                        Add Your First Exam
+                      </div>
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -139,7 +108,7 @@ const Header = ({ showAuth = true, onExamChange, setActiveTab }) => {
           <div className="flex items-center">
             {user ? (
               <span className="text-sm font-medium">
-                {user.email?.split('@')[0] || 'mousab.r'}
+                {user.email?.split('@')[0]}
               </span>
             ) : showAuth ? (
               <Link href="/signin">
@@ -162,7 +131,11 @@ const Header = ({ showAuth = true, onExamChange, setActiveTab }) => {
             </div>
           </SheetHeader>
           <div className="px-6 py-6">
-            <AddExamContent onAddExam={handleAddExam} onCancel={() => setIsAddExamOpen(false)} />
+            <AddExamContent 
+              user={user}
+              onAddExam={handleAddExam} 
+              onCancel={() => setIsAddExamOpen(false)} 
+            />
           </div>
         </SheetContent>
       </Sheet>

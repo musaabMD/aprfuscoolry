@@ -3,53 +3,114 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Info } from "lucide-react";
+import { createBrowserClient } from '@supabase/ssr';
 
 export default function Blueprint({ selectedExam }) {
   const [examBlueprint, setExamBlueprint] = useState([]);
+  const [loading, setLoading] = useState(true);
   
   useEffect(() => {
     if (!selectedExam) return;
     
-    // This would ideally come from an API or context
-    // Mapping exam IDs to their respective blueprints
-    const blueprints = {
-      'nremt': [
-        { subject: 'Medical', percentage: 30, color: '#3B82F6' },
-        { subject: 'Trauma', percentage: 25, color: '#EF4444' },
-        { subject: 'Airway', percentage: 20, color: '#10B981' },
-        { subject: 'Operations', percentage: 15, color: '#F59E0B' },
-        { subject: 'Cardiology', percentage: 10, color: '#8B5CF6' },
-      ],
-      'abem': [
-        { subject: 'Critical Care', percentage: 23, color: '#3B82F6' },
-        { subject: 'Procedures', percentage: 21, color: '#EF4444' },
-        { subject: 'Pediatrics', percentage: 18, color: '#10B981' },
-        { subject: 'Toxicology', percentage: 15, color: '#F59E0B' },
-        { subject: 'Environmental', percentage: 13, color: '#8B5CF6' },
-        { subject: 'Infectious Disease', percentage: 10, color: '#EC4899' },
-      ],
-      'cpa': [
-        { subject: 'Auditing', percentage: 30, color: '#3B82F6' },
-        { subject: 'Financial', percentage: 30, color: '#10B981' },
-        { subject: 'Regulation', percentage: 25, color: '#F59E0B' },
-        { subject: 'Business', percentage: 15, color: '#8B5CF6' },
-      ],
-      'custom': [
-        { subject: 'Subject 1', percentage: 33, color: '#3B82F6' },
-        { subject: 'Subject 2', percentage: 33, color: '#10B981' },
-        { subject: 'Subject 3', percentage: 34, color: '#F59E0B' },
-      ],
+    const fetchBlueprint = async () => {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        );
+
+        // Get exam ID first
+        const { data: exam } = await supabase
+          .from('exams')
+          .select('id')
+          .eq('name', selectedExam)
+          .single();
+
+        if (!exam) return;
+
+        // Get subjects with question counts
+        const { data: subjects } = await supabase
+          .from('subjects')
+          .select(`
+            id,
+            name,
+            questions:questions(count)
+          `)
+          .eq('exam_id', exam.id);
+
+        if (subjects) {
+          // Calculate total questions
+          const totalQuestions = subjects.reduce((total, subject) => {
+            const questionCount = subject.questions?.[0]?.count || 0;
+            return total + questionCount;
+          }, 0);
+
+          // Calculate percentages and format data
+          const blueprint = subjects.map(subject => {
+            const questionCount = subject.questions?.[0]?.count || 0;
+            const percentage = totalQuestions > 0 
+              ? Math.round((questionCount / totalQuestions) * 100)
+              : 0;
+
+            return {
+              subject: subject.name,
+              percentage,
+              color: getSubjectColor(subject.name)
+            };
+          });
+
+          setExamBlueprint(blueprint);
+        }
+      } catch (error) {
+        console.error('Error fetching blueprint:', error);
+      } finally {
+        setLoading(false);
+      }
     };
-    
-    setExamBlueprint(blueprints[selectedExam] || []);
+
+    fetchBlueprint();
   }, [selectedExam]);
 
-  if (!selectedExam || examBlueprint.length === 0) {
+  // Helper function to get a color based on subject name
+  const getSubjectColor = (subjectName) => {
+    const colors = [
+      '#3B82F6', // blue
+      '#EF4444', // red
+      '#10B981', // green
+      '#F59E0B', // yellow
+      '#8B5CF6', // purple
+      '#EC4899', // pink
+      '#6366F1', // indigo
+      '#14B8A6'  // teal
+    ];
+
+    // Use hash function to consistently assign colors
+    const hash = subjectName.split('').reduce((acc, char) => {
+      return char.charCodeAt(0) + ((acc << 5) - acc);
+    }, 0);
+
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  if (!selectedExam || loading) {
     return (
       <Card className="bg-white shadow rounded-lg">
         <CardContent className="p-6 flex flex-col items-center justify-center min-h-[200px] text-center">
           <Info className="h-12 w-12 text-gray-400 mb-2" />
-          <p className="text-gray-500">Please select an exam to view its blueprint</p>
+          <p className="text-gray-500">
+            {!selectedExam ? 'Please select an exam to view its blueprint' : 'Loading blueprint...'}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (examBlueprint.length === 0) {
+    return (
+      <Card className="bg-white shadow rounded-lg">
+        <CardContent className="p-6 flex flex-col items-center justify-center min-h-[200px] text-center">
+          <Info className="h-12 w-12 text-gray-400 mb-2" />
+          <p className="text-gray-500">No blueprint data available for this exam</p>
         </CardContent>
       </Card>
     );

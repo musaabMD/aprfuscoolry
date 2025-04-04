@@ -1,172 +1,171 @@
+// components/contexts/ExamContext.js
 'use client';
 import { createContext, useContext, useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
+import { useUser } from './UserContext';
 
 const ExamContext = createContext();
 
 export function ExamProvider({ children }) {
+  const { user } = useUser();
   const [selectedExam, setSelectedExam] = useState(null);
-  const [examData, setExamData] = useState(null);
   const [userExams, setUserExams] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // Load from localStorage on initial mount
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedExam = localStorage.getItem('selectedExam');
-      const storedExamData = localStorage.getItem('examData');
-      const storedUserExams = localStorage.getItem('userExams');
-      
-      if (storedExam) setSelectedExam(storedExam);
-      if (storedExamData) {
-        try {
-          setExamData(JSON.parse(storedExamData));
-        } catch (e) {
-          console.error('Error parsing stored exam data:', e);
-        }
-      }
-      if (storedUserExams) {
-        try {
-          setUserExams(JSON.parse(storedUserExams));
-        } catch (e) {
-          console.error('Error parsing stored user exams:', e);
-        }
-      }
-    }
-  }, []);
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
 
   // Load user exams from Supabase
-  useEffect(() => {
-    const loadUserExams = async () => {
-      try {
-        const supabase = createBrowserClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-        );
-        
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (user) {
-          // Get user's exams from Supabase
-          const { data } = await supabase
-            .from('user_exam_access')
-            .select(`
-              exam_id,
-              exams (
-                id,
-                name,
-                description,
-                question_count,
-                subjects,
-                created_at
-              )
-            `)
-            .eq('user_id', user.id);
-            
-          if (data) {
-            const examsObj = data.reduce((acc, item) => {
-              const exam = item.exams;
-              acc[exam.name] = {
-                id: exam.id,
-                description: exam.description,
-                questionCount: exam.question_count,
-                subjects: exam.subjects || [],
-                createdAt: exam.created_at
-              };
-              return acc;
-            }, {});
-            
-            setUserExams(examsObj);
-            localStorage.setItem('userExams', JSON.stringify(examsObj));
-            
-            // Set first exam as selected if none selected
-            if (!selectedExam && Object.keys(examsObj).length > 0) {
-              const firstExam = Object.keys(examsObj)[0];
-              selectExam(firstExam, examsObj[firstExam]);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error loading exams:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadUserExams();
-  }, [selectedExam]);
-
-  const selectExam = (examId, data = null) => {
-    setSelectedExam(examId);
-    if (data) {
-      setExamData(data);
-      localStorage.setItem('examData', JSON.stringify(data));
+  const loadUserExams = async () => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
     }
-    localStorage.setItem('selectedExam', examId);
-  };
-  
-  const addExam = async (examData) => {
+
     try {
-      // Update local state first for responsive UI
-      const updatedExams = {
-        ...userExams,
-        [examData.name]: {
-          id: examData.id || examData.name.toLowerCase().replace(/\s+/g, '-'),
-          description: examData.description,
-          questionCount: examData.questions || 0,
-          subjects: examData.categories || [],
-          createdAt: new Date().toISOString()
+      setLoading(true);
+      // Get user's exam access
+      const { data: accessData, error: accessError } = await supabase
+        .from('user_exam_access')
+        .select(`
+          exam_id,
+          access_type,
+          exam:exams (
+            id,
+            name,
+            description,
+            slug,
+            category_id,
+            is_active,
+            has_demo,
+            subjects (
+              id,
+              name,
+              description,
+              flashcard_count,
+              question_count
+            )
+          )
+        `)
+        .eq('user_id', user.id);
+
+      if (accessError) throw accessError;
+
+      // Transform the data into the required format
+      const examsObj = {};
+      for (const access of accessData) {
+        if (access.exam) {
+          const { exam } = access;
+          examsObj[exam.name] = {
+            id: exam.id,
+            description: exam.description,
+            slug: exam.slug,
+            categoryId: exam.category_id,
+            isActive: exam.is_active,
+            hasDemo: exam.has_demo,
+            subjects: exam.subjects || [],
+            accessType: access.access_type
+          };
         }
-      };
-      
-      setUserExams(updatedExams);
-      localStorage.setItem('userExams', JSON.stringify(updatedExams));
-      selectExam(examData.name, updatedExams[examData.name]);
-      
-      // Then sync to Supabase
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      );
-      
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        // Only if it's a user-created exam
-        if (examData.purchaseType === 'free') {
-          await supabase.from('user_created_exams').insert({
-            user_id: user.id,
-            name: examData.name,
-            description: examData.description,
-            subjects: examData.categories || [],
-            question_count: examData.questions || 0
-          });
-        }
+      }
+
+      setUserExams(examsObj);
+
+      // If there's a selected exam in localStorage, verify it exists in user's exams
+      const storedExam = localStorage.getItem('selectedExam');
+      if (storedExam && examsObj[storedExam]) {
+        setSelectedExam(storedExam);
+      } else {
+        localStorage.removeItem('selectedExam');
+        setSelectedExam(null);
       }
     } catch (error) {
-      console.error('Error adding exam:', error);
+      console.error('Error loading exams:', error);
+      setUserExams({});
+    } finally {
+      setLoading(false);
     }
   };
-  
-  const clearSelectedExam = () => {
-    setSelectedExam(null);
-    setExamData(null);
-    if (typeof window !== 'undefined') {
+
+  useEffect(() => {
+    loadUserExams();
+  }, [user?.id]);
+
+  // Select an exam
+  const selectExam = (examName) => {
+    if (examName && userExams[examName]) {
+      setSelectedExam(examName);
+      localStorage.setItem('selectedExam', examName);
+    } else {
+      setSelectedExam(null);
       localStorage.removeItem('selectedExam');
-      localStorage.removeItem('examData');
     }
   };
-  
+
+  // Add a new exam
+  const addExam = async (newExam) => {
+    if (!user?.id) throw new Error('User not authenticated');
+
+    try {
+      // Call our API route to create the exam
+      const response = await fetch('/api/exams', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newExam),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add exam');
+      }
+
+      const { exam } = await response.json();
+      
+      // Update local state
+      setUserExams(prev => ({
+        ...prev,
+        [exam.name]: {
+          id: exam.id,
+          description: exam.description,
+          slug: exam.slug,
+          categoryId: exam.category_id,
+          isActive: exam.is_active,
+          hasDemo: exam.has_demo,
+          subjects: newExam.categories?.map(category => ({
+            name: category,
+            description: `${category} for ${newExam.name}`,
+            flashcard_count: 0,
+            question_count: 0
+          })) || [],
+          accessType: newExam.purchaseType || 'free'
+        }
+      }));
+
+      // Refresh user exams after adding a new one
+      await loadUserExams();
+
+      return exam;
+    } catch (error) {
+      console.error('Error adding exam:', error);
+      throw error;
+    }
+  };
+
+  const value = {
+    selectedExam,
+    selectExam,
+    userExams,
+    loading,
+    addExam,
+    refreshExams: loadUserExams
+  };
+
   return (
-    <ExamContext.Provider value={{ 
-      selectedExam, 
-      examData,
-      userExams,
-      loading,
-      selectExam,
-      addExam,
-      clearSelectedExam
-    }}>
+    <ExamContext.Provider value={value}>
       {children}
     </ExamContext.Provider>
   );

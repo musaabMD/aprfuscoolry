@@ -1,5 +1,5 @@
 'use client';
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { FileText, Award, Book, PlusCircle, ChevronRight, X, Filter, LogOut } from "lucide-react";
@@ -32,28 +32,92 @@ import FeatureList from "@/components/Featurelist";
 
 export default function Home() {
   const { user } = useUser();
-  const { selectedExam, selectExam } = useExam();
+  const { selectedExam, selectExam, addExam } = useExam();
   const router = useRouter();
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   );
   const [isAddExamOpen, setIsAddExamOpen] = useState(false);
-  const [exams, setExams] = useState({
-    "NREMT": {
-      id: "nremt",
-      description: "National Registry of Emergency Medical Technicians",
-      questions: 120,
-      hyNotes: 45,
-      categories: ["Medical", "Trauma", "Airway", "Operations"],
-      progress: "25%",
-      lastStudied: "Today",
-      color: "#171717"
-    }
-  });
-  const [filterType, setFilterType] = useState('all'); // 'all', 'free', 'paid'
+  const [exams, setExams] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [filterType, setFilterType] = useState('all');
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
-  
+  const [userExams, setUserExams] = useState([]);
+
+  const fetchUserExams = async () => {
+    try {
+      const { data: examAccess, error } = await supabase
+        .from('user_exam_access')
+        .select(`
+          exam_id,
+          access_type,
+          exams (
+            id,
+            name,
+            description,
+            subjects (
+              id,
+              name
+            )
+          )
+        `)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      const formattedExams = {};
+      examAccess.forEach(access => {
+        if (!access.exams) return;
+
+        formattedExams[access.exams.name] = {
+          id: access.exams.id,
+          description: access.exams.description || '',
+          categories: access.exams.subjects?.map(s => s.name) || [],
+          progress: "0%",
+          lastStudied: "Never",
+          purchaseType: access.access_type
+        };
+      });
+
+      setExams(formattedExams);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching user exams:', error);
+      toast.error('Failed to load your exams');
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchUserExams();
+    }
+  }, [user]);
+
+  const handleAddExam = async (examData) => {
+    try {
+      const response = await fetch('/api/exams', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(examData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add exam');
+      }
+
+      // Refresh the user's exams after adding a new one
+      await fetchUserExams();
+      toast.success('Exam added successfully!');
+    } catch (error) {
+      console.error('Error adding exam:', error);
+      toast.error('Failed to add exam. Please try again.');
+    }
+  };
+
   // Check if user has any exams
   const hasExams = Object.keys(exams).length > 0;
 
@@ -67,38 +131,6 @@ export default function Home() {
       console.error('Error signing out:', error.message);
       toast.error('Error signing out');
     }
-  };
-
-  // Handle adding a new exam
-  const handleAddExam = (examData) => {
-    const updatedExams = {
-      ...exams,
-      [examData.name]: {
-        id: examData.id,
-        description: examData.description,
-        questions: examData.questions,
-        hyNotes: examData.hyNotes,
-        categories: examData.categories,
-        progress: "0%",
-        lastStudied: "Never",
-        color: "#171717",
-        purchaseType: examData.purchaseType
-      }
-    };
-    setExams(updatedExams);
-    
-    // If this is the first exam, auto-select it
-    if (Object.keys(exams).length === 0) {
-      selectExam(examData.name);
-    } else {
-      selectExam(examData.name);
-    }
-    
-    // Close the side sheet
-    setIsAddExamOpen(false);
-    
-    // Show success toast
-    toast.success(`${examData.name} has been added!`);
   };
 
   // Generate icon for exam
@@ -117,7 +149,7 @@ export default function Home() {
   const filteredExams = () => {
     return Object.entries(exams).filter(([_, examData]) => {
       if (filterType === 'free') return examData.purchaseType === 'free';
-      if (filterType === 'paid') return examData.purchaseType === 'paid';
+      if (filterType === 'paid') return examData.purchaseType === 'premium';
       return true;
     });
   };
@@ -127,11 +159,18 @@ export default function Home() {
     toast.success("Redirecting to payment...");
   };
 
+  if (loading) {
+    return (
+      <div className="w-full h-full overflow-hidden bg-gray-50">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-full overflow-hidden bg-gray-50">
-      <br />
-      <br />
-      <br />
       <div className="max-w-6xl mx-auto px-4 py-8 h-full flex flex-col">
         {/* Welcome message - Centered */}
         <div className="mb-8 text-center">
@@ -325,7 +364,11 @@ export default function Home() {
             </div>
           </SheetHeader>
           <div className="px-6 py-6">
-            <AddExamContent onAddExam={handleAddExam} onCancel={() => setIsAddExamOpen(false)} />
+            <AddExamContent 
+              user={user}
+              onAddExam={handleAddExam} 
+              onCancel={() => setIsAddExamOpen(false)} 
+            />
           </div>
         </SheetContent>
       </Sheet>
@@ -334,6 +377,9 @@ export default function Home() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Upgrade to Premium Access</DialogTitle>
+            <p className="text-sm text-gray-500">
+              Get unlimited access to all premium features and study materials.
+            </p>
           </DialogHeader>
           <div className="py-4">
             <div className="mb-6">
